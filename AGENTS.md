@@ -10,8 +10,10 @@
   environments. Validation uses `config -q`.
 - `ENCRYPTION_KEY` must never change once channels exist (tokens become unreadable).
   `scripts/configure.sh` only appends missing keys.
-- Keep `DISABLE_REGISTRATION=true`. Do not configure `POSTIZ_GENERIC_OAUTH`
-  without re-reading `AuthService.canRegister` (GENERIC always may register).
+- Keep `DISABLE_REGISTRATION=true`. Generic OIDC (`POSTIZ_GENERIC_OAUTH`) is on
+  and GENERIC users may always register (`AuthService.canRegister`), so the
+  Access policy in `infra/terraform/access.tf` (team@appsdoc.com only) is the
+  gate. Never widen that policy or point Postiz at another OIDC issuer.
 - Only the `postiz` service joins `public-edge`; no service publishes a non-loopback
   host port. `scripts/check.sh` enforces this.
 - The shared Caddy at `/opt/server-edge` serves other production sites. Only

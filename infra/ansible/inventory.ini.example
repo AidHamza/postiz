@@ -1,0 +1,4 @@
+# Copy to inventory.ini (gitignored). The SSH host key must already be in
+# ~/.ssh/known_hosts; host key checking stays enabled.
+[postiz]
+frankfurt ansible_host=<frankfurt-ip> ansible_user=root

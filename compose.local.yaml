@@ -1,0 +1,10 @@
+# Local/testing override: reach the app at http://127.0.0.1:4007 without the
+# shared edge. Create the stand-in network once: docker network create public-edge-local
+# POSTIZ_COMPOSE_EXTRA=compose.local.yaml POSTIZ_SHARED_DIR=$PWD/.local POSTIZ_PROJECT=appsdoc_postiz_local \
+#   PUBLIC_EDGE_NETWORK=public-edge-local scripts/compose.sh up -d
+# Set NOT_SECURED=true in .local/app.env for plain-HTTP cookies, and
+# POSTIZ_PUBLIC_URL=http://127.0.0.1:4007 in .local/infra.env.
+services:
+  postiz:
+    ports:
+      - "127.0.0.1:4007:5000"

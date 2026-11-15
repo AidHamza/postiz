@@ -1,0 +1,238 @@
+# AppsDoc Postiz — production stack.
+#
+# Derived from gitroomhq/postiz-docker-compose@dd4969e5e694cd009619a0d53cff14c21104580b
+# (docker-compose.yaml) for Postiz v2.26.0 (gitroomhq/postiz-app@132859f3).
+# Differences from upstream are listed in docs/UPSTREAM.md.
+#
+# Run only through scripts/compose.sh, which pins the project name and passes
+# the private env files that live outside the release directory:
+#   POSTIZ_SHARED_DIR/infra.env  -> interpolation (database/redis passwords)
+#   POSTIZ_SHARED_DIR/app.env    -> postiz container environment
+#
+# No service publishes a host port. Public traffic arrives only through the
+# shared server-edge Caddy on the external `public-edge` network, which reaches
+# the `appsdoc-postiz` alias on port 5000.
+
+name: appsdoc_postiz
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  postiz:
+    image: ghcr.io/gitroomhq/postiz-app:v2.26.0@sha256:875e61ac5d0ac43c3dec78a78a7032dfb03d9a8c6d4936ebb18adb606cc207c5
+    restart: unless-stopped
+    env_file:
+      - path: ${POSTIZ_SHARED_DIR:?POSTIZ_SHARED_DIR is required}/app.env
+        required: true
+    environment:
+      # Fixed by this deployment; app.env cannot override these.
+      MAIN_URL: ${POSTIZ_PUBLIC_URL:?}
+      FRONTEND_URL: ${POSTIZ_PUBLIC_URL:?}
+      NEXT_PUBLIC_BACKEND_URL: ${POSTIZ_PUBLIC_URL:?}/api
+      BACKEND_INTERNAL_URL: http://localhost:3000
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      IS_GENERAL: "true"
+      # With DISABLE_REGISTRATION=true v2.26.0 only lets the first organisation
+      # register (AuthService.canRegister). The deploy bootstraps the owner
+      # before the public route exists.
+      DISABLE_REGISTRATION: "true"
+      # Canonical upstream setting; not read by v2.26.0 source, kept for parity.
+      RUN_CRON: "true"
+      DATABASE_URL: postgresql://postiz:${POSTIZ_DB_PASSWORD:?}@postiz-postgres:5432/postiz
+      REDIS_URL: redis://:${POSTIZ_REDIS_PASSWORD:?}@postiz-redis:6379
+      STORAGE_PROVIDER: local
+      UPLOAD_DIRECTORY: /uploads
+      NEXT_PUBLIC_UPLOAD_DIRECTORY: /uploads
+      NX_ADD_PLUGINS: "false"
+    volumes:
+      - postiz-config:/config
+      - postiz-uploads:/uploads
+    networks:
+      postiz-data: {}
+      temporal: {}
+      public-edge:
+        aliases: [appsdoc-postiz]
+    healthcheck:
+      test: ["CMD", "node", "-e", "const r=require('http').get('http://localhost:5000/',res=>process.exit(res.statusCode<500?0:1));r.on('error',()=>process.exit(1));r.setTimeout(4000,()=>{r.destroy();process.exit(1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    depends_on:
+      postiz-postgres:
+        condition: service_healthy
+      postiz-redis:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    mem_limit: 6g
+    cpus: 4
+    logging: *logging
+
+  postiz-postgres:
+    image: postgres:17-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postiz
+      POSTGRES_DB: postiz
+      POSTGRES_PASSWORD: ${POSTIZ_DB_PASSWORD:?}
+    volumes:
+      - postiz-postgres-data:/var/lib/postgresql/data
+    networks: [postiz-data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postiz -d postiz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    shm_size: 256m
+    mem_limit: 2g
+    cpus: 2
+    logging: *logging
+
+  postiz-redis:
+    image: redis:7.2@sha256:5b816bb37d9707a70f10ef5002ecf8ee431750d397010fc4314c93dca887962f
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${POSTIZ_REDIS_PASSWORD:?}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - postiz-redis-data:/data
+    networks: [postiz-data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    mem_limit: 1g
+    cpus: 1
+    logging: *logging
+
+  # ---------------- Temporal (required by Postiz workflows) ----------------
+  temporal-elasticsearch:
+    image: elasticsearch:7.17.27@sha256:9a6443f55243f6acbfeb4a112d15eb3b9aac74bf25e0e39fa19b3ddd3a6879d0
+    restart: unless-stopped
+    environment:
+      - cluster.routing.allocation.disk.threshold_enabled=true
+      - cluster.routing.allocation.disk.watermark.low=512mb
+      - cluster.routing.allocation.disk.watermark.high=256mb
+      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    volumes:
+      - temporal-elasticsearch-data:/usr/share/elasticsearch/data
+    networks: [temporal]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS \"http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s\" || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+    mem_limit: 1536m
+    cpus: 2
+    logging: *logging
+
+  temporal-postgresql:
+    image: postgres:16@sha256:dd2bf3ce2dc83a81674cf7f217fcfd8a5009a4b325dda5b843bfee82a06cff6f
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD:?}
+    volumes:
+      - temporal-postgres-data:/var/lib/postgresql/data
+    networks: [temporal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    shm_size: 256m
+    mem_limit: 2g
+    cpus: 2
+    logging: *logging
+
+  temporal:
+    image: temporalio/auto-setup:1.28.1@sha256:607d68caa111338d754771efb876c92dfcdae06d056e4530bb31cd0f37406e6a
+    restart: unless-stopped
+    depends_on:
+      temporal-postgresql:
+        condition: service_healthy
+      temporal-elasticsearch:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD:?}
+      - POSTGRES_SEEDS=temporal-postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - ENABLE_ES=true
+      - ES_SEEDS=temporal-elasticsearch
+      - ES_VERSION=v7
+      - TEMPORAL_NAMESPACE=default
+    volumes:
+      - ./config/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    networks: [temporal]
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "temporal:7233"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    mem_limit: 2g
+    cpus: 2
+    logging: *logging
+
+  # Operator tooling only: `scripts/compose.sh --profile admin run --rm temporal-admin-tools ...`
+  temporal-admin-tools:
+    profiles: [admin]
+    image: temporalio/admin-tools:1.28.1-tctl-1.18.4-cli-1.4.1@sha256:01537b62d995f27a0f0d33a01ac4caa6779622f454fb2eb36fed0dccd45c6244
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    networks: [temporal]
+    logging: *logging
+
+  # Private debugging UI, bound to the host loopback only. Reach it with
+  # `ssh -L 18080:127.0.0.1:18080 <host>` after `--profile debug up -d temporal-ui`.
+  temporal-ui:
+    profiles: [debug]
+    image: temporalio/ui:2.34.0@sha256:cb17ea423d76a8a19a269d0bcd81fc12eee1f6365acd2a56b590dafb35696a95
+    restart: "no"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://127.0.0.1:18080
+    ports:
+      - "127.0.0.1:18080:8080"
+    networks: [temporal]
+    depends_on:
+      temporal:
+        condition: service_healthy
+    logging: *logging
+
+networks:
+  # Data services have no route to the internet or to other stacks.
+  postiz-data:
+    internal: true
+  temporal:
+    internal: true
+  # Shared edge network owned by /opt/server-edge. Only `postiz` joins it.
+  public-edge:
+    external: true
+    name: ${PUBLIC_EDGE_NETWORK:-public-edge}
+
+volumes:
+  postiz-config:
+  postiz-uploads:
+  postiz-postgres-data:
+  postiz-redis-data:
+  temporal-postgres-data:
+  temporal-elasticsearch-data:

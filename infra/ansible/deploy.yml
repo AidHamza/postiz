@@ -1,0 +1,117 @@
+---
+# Deploy an exact git commit of this repository to the existing host.
+#   POSTIZ_RELEASE_ID=<40-char sha> POSTIZ_RELEASE_ARCHIVE=<git archive .tar.gz>
+# Additive only: touches /opt/appsdoc/postiz, the appsdoc_postiz Compose
+# project, one server-edge site file and the Postiz backup timer.
+- name: Deploy AppsDoc Postiz
+  hosts: postiz
+  become: true
+  vars:
+    install_root: /opt/appsdoc/postiz
+    release_id: "{{ lookup('env', 'POSTIZ_RELEASE_ID') }}"
+    release_archive: "{{ lookup('env', 'POSTIZ_RELEASE_ARCHIVE') }}"
+    # Reuse OpenPanel's SMTP relay settings (mapped to Postiz names on the host).
+    smtp_source: /opt/appsdoc/openpanel/shared/.env
+  pre_tasks:
+    - name: Validate inputs and target
+      ansible.builtin.assert:
+        that:
+          - release_id is match('^[a-f0-9]{40}$')
+          - release_archive | length > 0
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] == '24.04'
+        fail_msg: Provide a git SHA and archive; target must be Ubuntu 24.04.
+    - name: Require the shared edge network
+      ansible.builtin.command: docker network inspect public-edge
+      changed_when: false
+  tasks:
+    - name: Create release and private directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: "{{ install_root }}", mode: '0755'}
+        - {path: "{{ install_root }}/releases", mode: '0755'}
+        - {path: "{{ install_root }}/releases/{{ release_id }}", mode: '0755'}
+        - {path: "{{ install_root }}/shared", mode: '0700'}
+        - {path: "{{ install_root }}/backups", mode: '0700'}
+
+    - name: Extract the exact committed release
+      ansible.builtin.unarchive:
+        src: "{{ release_archive }}"
+        dest: "{{ install_root }}/releases/{{ release_id }}"
+        owner: root
+        group: root
+
+    - name: Configure, start, bootstrap and route the release
+      ansible.builtin.command:
+        argv: [bash, scripts/deploy.sh]
+        chdir: "{{ install_root }}/releases/{{ release_id }}"
+      environment:
+        POSTIZ_ROOT: "{{ install_root }}"
+        POSTIZ_SHARED_DIR: "{{ install_root }}/shared"
+        POSTIZ_SMTP_SOURCE: "{{ smtp_source }}"
+      register: deploy_out
+      changed_when: true
+      # Script output is sanitized (no values), but keep secrets out of Ansible logs anyway.
+      no_log: true
+
+    - name: Show sanitized deployment log
+      ansible.builtin.debug:
+        msg: "{{ deploy_out.stdout_lines | select('match', '^\\[') | list }}"
+
+    - name: Point current at the healthy release
+      ansible.builtin.file:
+        src: "{{ install_root }}/releases/{{ release_id }}"
+        dest: "{{ install_root }}/current"
+        state: link
+        force: true
+
+    - name: Keep the five newest releases (never the current one)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ install_root }}/releases
+        keep=$(readlink -f {{ install_root }}/current | xargs basename)
+        ls -1t | grep -v "^${keep}$" | tail -n +5 | xargs -r rm -rf
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Install daily backup service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/appsdoc-postiz-backup.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=AppsDoc Postiz online backup (no service pause)
+          Requires=docker.service
+          After=docker.service
+          [Service]
+          Type=oneshot
+          UMask=0077
+          Environment=POSTIZ_ROOT={{ install_root }}
+          ExecStart=/bin/bash {{ install_root }}/current/scripts/backup.sh {{ install_root }}/backups
+
+    - name: Install daily backup timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/appsdoc-postiz-backup.timer
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Daily AppsDoc Postiz backup
+          [Timer]
+          OnCalendar=*-*-* 03:30:00 UTC
+          RandomizedDelaySec=300
+          Persistent=true
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable backup timer
+      ansible.builtin.systemd_service:
+        name: appsdoc-postiz-backup.timer
+        daemon_reload: true
+        enabled: true
+        state: started

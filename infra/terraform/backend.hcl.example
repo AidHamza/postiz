@@ -1,0 +1,4 @@
+bucket = "appsdoc-terraform-state"
+endpoints = {
+  s3 = "https://<cloudflare-account-id>.r2.cloudflarestorage.com"
+}

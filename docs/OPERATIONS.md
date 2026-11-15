@@ -5,7 +5,7 @@ Host layout (Frankfurt):
 ```
 /opt/appsdoc/postiz/releases/<git-sha>   exact git archive of a commit
 /opt/appsdoc/postiz/current              -> healthy release (switched after checks)
-/opt/appsdoc/postiz/shared/  (0700)      infra.env, app.env, owner-login (0600)
+/opt/appsdoc/postiz/shared/  (0700)      infra.env, app.env (0600)
 /opt/appsdoc/postiz/backups/ (0700)      postiz-<UTC timestamp>/
 /opt/server-edge/sites/appsdoc-postiz.caddy   Postiz route in the shared Caddy
 ```
@@ -21,7 +21,7 @@ release changes. Always use `scripts/compose.sh` on the host.
 | Deploy committed HEAD | `make deploy` |
 | Status / readiness / registration state | `make status` |
 | Logs | `make logs` · `make logs SVC=temporal LINES=500` |
-| Smoke (public + authenticated) | `make smoke` |
+| Smoke (public + server-side) | `make smoke` |
 | Backup now | `make backup` |
 | Isolated restore test | `make restore-test` |
 | Update | bump pins → `make check` → commit → `make deploy` |
@@ -30,33 +30,35 @@ On the host: `cd /opt/appsdoc/postiz/current && bash scripts/compose.sh ps`.
 
 ## Login
 
-Two supported paths, both verified against v2.26.0 source:
+**Google Workspace only.** Use the "AppsDoc Google Workspace" button on
+`https://social.appsdoc.com/auth/login` or the **Social Media** tile on
+`hub.appsdoc.com`. Postiz generic OIDC → Cloudflare Access SaaS application
+(Terraform `access.tf`) → existing Google Workspace IdP. Access policy: members
+of `team@appsdoc.com` only.
 
-1. **AppsDoc Google Workspace (team)** — the "AppsDoc Google Workspace" button
-   on `https://social.appsdoc.com/auth/login`, or the **Social Media** tile on
-   `hub.appsdoc.com`. Postiz generic OIDC → Cloudflare Access SaaS application
-   (Terraform `access.tf`) → existing Google Workspace IdP. Access policy:
-   members of `team@appsdoc.com` only.
-2. **Owner email/password (break-glass)** — `hamza@appsdoc.com`, organisation
-   AppsDoc, created by `scripts/bootstrap-owner.sh`.
-   `ssh root@<host> cat /opt/appsdoc/postiz/shared/owner-login`.
+Email/password is off. Postiz v2.26.0 has no setting for this, so the Caddy
+site (`deploy/edge/appsdoc-postiz.caddy`) answers 403 on `/api/auth/login`,
+`/forgot`, `/forgot-return`, `/activate`, `/resend-activation` and redirects the
+forgot/activate pages. The login page still draws the email/password form;
+submitting it returns the 403 message. LOCAL registration is refused by the
+app. The bootstrap password owner was deleted on 2026-11-15 through Postiz's
+own delete-account API (soft delete, identifying fields hashed).
 
 How OIDC accounts relate to the organisation (v2.26.0 behaviour):
 
-- Users are matched by OIDC subject + provider. An OIDC login is a *different
-  Postiz user* from the email/password owner, even with the same email.
+- Users are matched by OIDC subject + provider.
 - GENERIC users may always register (`AuthService.canRegister`), so the Access
   policy is the only gate. A team member who logs in **without an invitation**
   gets a new, empty organisation of their own.
 - To put people in the AppsDoc organisation: as owner, **Settings → Team →
   Invite** their Workspace address, and they open the invitation link and pick
-  the Google Workspace button. Do the same for your own Workspace identity if
-  you want to use the hub tile instead of the password.
+  the Google Workspace button.
 - Removing someone from `team@appsdoc.com` stops new OIDC logins; existing
   Postiz sessions last until they expire or you remove the user in Postiz.
 
-Registration for everyone else stays closed (`DISABLE_REGISTRATION=true`, one
-organisation exists): email/password signups are refused.
+Owner organisation: the one created by hamza@appsdoc.com's first Google
+login (2026-11-15). An orphaned "AppsDoc" organisation from the deleted
+password owner remains (it holds only two 1×1 smoke-test images).
 
 OIDC settings live in `app.env` (`POSTIZ_GENERIC_OAUTH`, `POSTIZ_OAUTH_*`). To
 rotate/refresh them after a Terraform change:
@@ -72,7 +74,7 @@ make deploy
 - Daily at 03:30 UTC (`appsdoc-postiz-backup.timer`), plus before each deploy of
   an existing installation. Online and consistent: `pg_dump -Fc` (Postiz DB),
   `pg_dumpall` (Temporal persistence), tar of uploads and `/config`, copies of
-  `infra.env`/`app.env`/`owner-login`, `SHA256SUMS`. No service pause.
+  `infra.env`/`app.env`, `SHA256SUMS`. No service pause.
 - Retention: newest 14 (`RETAIN`). Files are secrets (0700/0600).
 - **Local only.** They do not protect against host loss. No existing encrypted
   off-host destination was found for this host. Next step: sync

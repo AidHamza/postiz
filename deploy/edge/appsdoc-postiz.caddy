@@ -22,6 +22,15 @@ social.appsdoc.com {
 	@appsdoc_postiz_api path /api/*
 	header @appsdoc_postiz_api >Cache-Control "private, no-store"
 
+	# Google Workspace (Cloudflare Access OIDC) is the only login. Postiz v2.26.0
+	# has no setting to turn off email/password, so its endpoints stop here.
+	# OIDC uses /api/auth/oauth/GENERIC* and /api/auth/register (GENERIC token);
+	# LOCAL registration is refused by the app (DISABLE_REGISTRATION=true).
+	@appsdoc_postiz_password path /api/auth/login /api/auth/forgot /api/auth/forgot-return /api/auth/activate /api/auth/resend-activation
+	respond @appsdoc_postiz_password "Password login is disabled. Use AppsDoc Google Workspace." 403
+	@appsdoc_postiz_password_pages path /auth/forgot /auth/forgot/* /auth/activate /auth/activate/*
+	redir @appsdoc_postiz_password_pages /auth/login 302
+
 	reverse_proxy appsdoc-postiz:5000 {
 		transport http {
 			read_timeout 300s

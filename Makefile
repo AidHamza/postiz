@@ -28,7 +28,7 @@ status:
 logs:             ## SVC=postiz (default) LINES=200
 	$(REMOTE) 'cd $(ROOT)/current && bash scripts/compose.sh logs --no-color --tail $(or $(LINES),200) $(or $(SVC),postiz)'
 
-smoke:            ## public + authenticated checks
+smoke:            ## public + server-side checks
 	bash scripts/smoke-public.sh
 	$(REMOTE) 'cd $(ROOT)/current && bash scripts/smoke-auth.sh'
 

@@ -27,6 +27,10 @@ if [[ "$oidc" == https://*.cloudflareaccess.com/cdn-cgi/access/sso/oidc/*redirec
   ok "OIDC login link points at Cloudflare Access with the /settings callback"
   c="$(code "$oidc")"; [[ "$c" = 302 || "$c" = 200 ]] && ok "Access authorization endpoint responds ($c)" || no "Access authorization endpoint $c"
 else no "OIDC link: ${oidc:0:120}"; fi
+c="$(code -H 'content-type: application/json' -d '{"email":"outsider-smoke@example.invalid","password":"x-not-real-123","provider":"LOCAL"}' "$url/api/auth/login")"
+[ "$c" = 403 ] && ok "password login blocked at the edge" || no "password login $c"
+c="$(code -H 'content-type: application/json' -d '{"email":"outsider-smoke@example.invalid"}' "$url/api/auth/forgot")"
+[ "$c" = 403 ] && ok "password reset blocked at the edge" || no "password reset $c"
 html="$(curl -sS --max-time 30 "$url/auth/login")"
 asset="$(grep -oE '/_next/static/[^"]+\.js' <<<"$html" | head -1)"
 [ -n "$asset" ] && c="$(code "$url$asset")" && [ "$c" = 200 ] && ok "static asset loads ($asset)" || no "static asset '$asset' ${c:-}"

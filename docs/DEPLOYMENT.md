@@ -79,3 +79,14 @@ Cloudflare (Terraform, state `postiz/terraform.tfstate`):
 - The first Ansible run stalled locally after the server-side deploy had
   finished (no remote process left); it was stopped and the deployment re-run
   successfully twice. Not reproduced since.
+
+## 2026-11-15 — Google Workspace login only
+
+- Requested by Hamza: keep only Google login.
+- Backup taken, then the bootstrap email/password owner was deleted via
+  `POST /api/user/delete-account` (supported soft delete); its login then failed.
+  `owner-login` removed from the server (copies remain only in backups).
+- Caddy site blocks password endpoints with 403; `scripts/bootstrap-owner.sh`
+  no longer stores a password.
+- Smoke: password login/reset → 403, OIDC link → Access, LOCAL registration
+  closed, 1 active OIDC user, 0 active password users, worker pollers present.

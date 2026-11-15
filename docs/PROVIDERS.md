@@ -1,7 +1,8 @@
 # Social provider setup checklist
 
-Status on 2026-11-15: **no provider credentials are configured. No channel is
-connected.** A healthy web app does not mean any provider works.
+Status on 2026-11-15: **X consumer keys are configured** (X issued an OAuth
+request token for the callback below). No other provider is configured. **No
+channel is connected yet.** A healthy web app does not mean any provider works.
 
 Derived from Postiz v2.26.0 source
 (`libraries/nestjs-libraries/src/integrations/social/*.provider.ts`): each

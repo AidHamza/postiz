@@ -2,3 +2,5 @@ zone_id = "<appsdoc.com zone id>"
 # Adopt the existing record (needs Zone:DNS Read/Edit on the token):
 # social_record_id = "<record id from the DNS API>"
 # origin_ipv4      = "<current target IP>"
+account_id                  = "<cloudflare account id>"
+google_identity_provider_id = "<Zero Trust Google Workspace IdP UUID>"

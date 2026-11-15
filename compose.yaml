@@ -212,7 +212,8 @@ services:
       - TEMPORAL_CORS_ORIGINS=http://127.0.0.1:18080
     ports:
       - "127.0.0.1:18080:8080"
-    networks: [temporal]
+    # Internal networks cannot carry published ports; debug-ui is a plain bridge.
+    networks: [temporal, debug-ui]
     depends_on:
       temporal:
         condition: service_healthy
@@ -224,6 +225,8 @@ networks:
     internal: true
   temporal:
     internal: true
+  # Only created when the debug profile runs temporal-ui.
+  debug-ui: {}
   # Shared edge network owned by /opt/server-edge. Only `postiz` joins it.
   public-edge:
     external: true

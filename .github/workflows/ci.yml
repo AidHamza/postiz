@@ -1,0 +1,21 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+      - name: Install ansible-core and shellcheck
+        run: |
+          pipx install ansible-core==2.19.3
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+      - name: Static checks (compose, pins, ports, shell, terraform, ansible)
+        run: bash scripts/check.sh

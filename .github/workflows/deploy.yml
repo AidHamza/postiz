@@ -1,0 +1,39 @@
+# Optional manual production deployment. The first deployment was done from an
+# operator workstation (docs/DEPLOYMENT.md). Requires environment `production` with
+# secrets DEPLOY_HOST, DEPLOY_SSH_KEY (dedicated key) and DEPLOY_KNOWN_HOSTS
+# (verified host key line). Runtime secrets stay on the server.
+name: Deploy production
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency: postiz-production
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static checks
+        run: |
+          pipx install ansible-core==2.19.3
+          bash scripts/check.sh
+      - name: SSH setup
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+      - name: Deploy exact commit
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          printf '[postiz]\nfrankfurt ansible_host=%s ansible_user=root\n' "$HOST" > infra/ansible/inventory.ini
+          mkdir -p dist && git archive --format=tar.gz --output=dist/release.tar.gz HEAD
+          cd infra/ansible
+          POSTIZ_RELEASE_ID=$GITHUB_SHA POSTIZ_RELEASE_ARCHIVE=$GITHUB_WORKSPACE/dist/release.tar.gz ansible-playbook deploy.yml
+      - name: Public smoke
+        run: bash scripts/smoke-public.sh

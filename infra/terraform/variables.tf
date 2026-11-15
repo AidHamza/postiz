@@ -24,3 +24,29 @@ variable "social_record_id" {
     (proxied, same target).
   EOT
 }
+
+variable "account_id" {
+  type        = string
+  description = "Existing Cloudflare account ID."
+}
+
+variable "google_identity_provider_id" {
+  type        = string
+  description = "UUID of the existing Google Workspace identity provider in Zero Trust (not a Google client/group ID)."
+}
+
+variable "access_team_domain" {
+  type        = string
+  default     = "appsdoc.cloudflareaccess.com"
+  description = "Zero Trust team domain that issues the OIDC endpoints."
+}
+
+variable "team_group_email" {
+  type    = string
+  default = "team@appsdoc.com"
+}
+
+variable "launcher_name" {
+  type    = string
+  default = "Social Media"
+}

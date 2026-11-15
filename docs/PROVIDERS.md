@@ -37,9 +37,30 @@ Cloudflare Free limits a proxied upload request to 100 MB; Postiz v2.26.0 local
 storage uploads through the app, so larger videos need R2 storage (see
 OPERATIONS.md) — not enabled.
 
-Google login for Postiz users reuses the YouTube OAuth client
-(`apps/backend/src/services/auth/providers/google.provider.ts`, redirect
-`/integrations/social/youtube`); it is not configured.
+Postiz's built-in Google login (which would reuse the YouTube OAuth client)
+is not used; team login is Google Workspace through Cloudflare Access OIDC.
+
+## Provider notes (checked against the v2.26.0 image)
+
+- **X:** OAuth 1.0a. In the X developer portal → app → User authentication
+  settings: OAuth 1.0a, permissions **Read and write**, type Web App, callback
+  above, website `https://social.appsdoc.com`. Use the app's **API Key / API Key
+  Secret** (consumer keys), not the OAuth 2.0 client ID. `X_URL` is optional and
+  only overrides the callback base. Posting needs a paid API plan or credits.
+- **Instagram:** prefer standalone (`INSTAGRAM_APP_*`, "Instagram API with
+  Instagram Login"): accounts must be Business or Creator, no Facebook Page
+  needed. While the Meta app is in development mode, only accounts added as
+  Instagram testers (App roles) can connect; anyone else needs App Review
+  (Advanced Access) plus Business Verification.
+- **TikTok:** add products Login Kit + Content Posting API (enable Direct Post).
+  Videos use `FILE_UPLOAD`; photo posts use `PULL_FROM_URL`, so verify the URL
+  prefix `https://social.appsdoc.com/uploads/` (or the domain) in the TikTok
+  portal. Until the app passes the audit, posts are private (`SELF_ONLY`) and
+  few users can post per day. A separate TikTok Business provider exists
+  (`TIKTOK_BUSINESS_CLIENT_ID/SECRET`); not configured.
+- To install keys without editing files by hand, pipe JSON to set-env:
+  `printf '%s' '{"X_API_KEY":"…","X_API_SECRET":"…"}' | ssh root@<host> 'bash /opt/appsdoc/postiz/current/scripts/set-env.sh /opt/appsdoc/postiz/shared/app.env'`
+  then `make deploy`.
 
 Optional paid features (OpenAI, Polotno, video generation, short-link services)
 are left unset on purpose. Add `OPENAI_API_KEY` / `NEXT_PUBLIC_POLOTNO` later

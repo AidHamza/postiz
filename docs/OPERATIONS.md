@@ -57,8 +57,7 @@ How OIDC accounts relate to the organisation (v2.26.0 behaviour):
   Postiz sessions last until they expire or you remove the user in Postiz.
 
 Owner organisation: the one created by hamza@appsdoc.com's first Google
-login (2026-11-15). An orphaned "AppsDoc" organisation from the deleted
-password owner remains (it holds only two 1×1 smoke-test images).
+login (2026-11-15). The deleted password owner's organisation is soft-deleted.
 
 OIDC settings live in `app.env` (`POSTIZ_GENERIC_OAUTH`, `POSTIZ_OAUTH_*`). To
 rotate/refresh them after a Terraform change:

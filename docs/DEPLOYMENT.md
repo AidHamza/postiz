@@ -90,3 +90,15 @@ Cloudflare (Terraform, state `postiz/terraform.tfstate`):
   no longer stores a password.
 - Smoke: password login/reset → 403, OIDC link → Access, LOCAL registration
   closed, 1 active OIDC user, 0 active password users, worker pollers present.
+
+## 2026-11-15 — cleanup to ready-to-use state
+
+- The deleted password owner's organisation was already soft-deleted by
+  Postiz's delete-account flow (its API key is no longer accepted). Its two
+  1×1 smoke-test images were soft-deleted and their files removed from the
+  uploads volume (0 files left).
+- Superseded same-day backups (containing the deleted account's password and
+  test data) removed after a fresh backup; restore test passed on it.
+- Active state: one organisation (AppsDoc, owner hamza@appsdoc.com via Google
+  Workspace), no channels, no posts, no media. Postiz MCP connected by Hamza.
+- `scripts/restore-test.sh` now counts only active (non-deleted) rows.

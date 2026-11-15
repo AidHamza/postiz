@@ -26,7 +26,7 @@ wait_pg "$a" postgres; wait_pg "$t" temporal
 docker exec "$a" createdb -U postgres postiz
 docker exec -i "$a" pg_restore -U postgres -d postiz --no-owner --exit-on-error <"$b/postiz.dump"
 q() { docker exec "$a" psql -U postgres -d postiz -tAc "$1"; }
-log "postiz: users=$(q 'select count(*) from "User"') orgs=$(q 'select count(*) from "Organization"') media=$(q 'select count(*) from "Media"')"
+log "postiz: users=$(q 'select count(*) from "User" where "deletedAt" is null') orgs=$(q 'select count(*) from "Organization" where "deletedAt" is null') media=$(q 'select count(*) from "Media" where "deletedAt" is null')"
 docker exec -i "$t" psql -q -U temporal -d postgres -v ON_ERROR_STOP=0 >/dev/null 2>&1 <"$b/temporal.sql" || true
 log "temporal: namespaces=$(docker exec "$t" psql -U temporal -d temporal -tAc 'select count(*) from namespaces') executions=$(docker exec "$t" psql -U temporal -d temporal -tAc 'select count(*) from executions')"
 log "uploads: files=$(tar -tzf "$b/uploads.tgz" | grep -vc '/$')"

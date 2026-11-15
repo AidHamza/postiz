@@ -40,7 +40,7 @@ make smoke      # public + authenticated checks
 make status | make logs | make backup | make restore-test
 ```
 
-First login: see `docs/OPERATIONS.md` → *Owner login*. Provider setup:
+First login: see `docs/OPERATIONS.md` → *Login*. Provider setup:
 `docs/PROVIDERS.md`. Deployment and validation record: `docs/DEPLOYMENT.md`.
 
 Runtime secrets exist only on the server in `/opt/appsdoc/postiz/shared`

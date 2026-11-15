@@ -28,16 +28,44 @@ release changes. Always use `scripts/compose.sh` on the host.
 
 On the host: `cd /opt/appsdoc/postiz/current && bash scripts/compose.sh ps`.
 
-## Owner login
+## Login
 
-`ssh root@<host> cat /opt/appsdoc/postiz/shared/owner-login` shows the URL,
-email and password of the bootstrap owner (`hamza@appsdoc.com`). Change the
-password in Postiz settings after first login if you like; the file is not
-updated automatically (the authenticated smoke test then needs the new value).
+Two supported paths, both verified against v2.26.0 source:
 
-Registration is closed (`DISABLE_REGISTRATION=true` + one organisation). Add
-colleagues with **Settings → Team → Invite** (email delivery via the SMTP relay
-configured from OpenPanel's settings). Invitations were not sent during deployment.
+1. **AppsDoc Google Workspace (team)** — the "AppsDoc Google Workspace" button
+   on `https://social.appsdoc.com/auth/login`, or the **Social Media** tile on
+   `hub.appsdoc.com`. Postiz generic OIDC → Cloudflare Access SaaS application
+   (Terraform `access.tf`) → existing Google Workspace IdP. Access policy:
+   members of `team@appsdoc.com` only.
+2. **Owner email/password (break-glass)** — `hamza@appsdoc.com`, organisation
+   AppsDoc, created by `scripts/bootstrap-owner.sh`.
+   `ssh root@<host> cat /opt/appsdoc/postiz/shared/owner-login`.
+
+How OIDC accounts relate to the organisation (v2.26.0 behaviour):
+
+- Users are matched by OIDC subject + provider. An OIDC login is a *different
+  Postiz user* from the email/password owner, even with the same email.
+- GENERIC users may always register (`AuthService.canRegister`), so the Access
+  policy is the only gate. A team member who logs in **without an invitation**
+  gets a new, empty organisation of their own.
+- To put people in the AppsDoc organisation: as owner, **Settings → Team →
+  Invite** their Workspace address, and they open the invitation link and pick
+  the Google Workspace button. Do the same for your own Workspace identity if
+  you want to use the hub tile instead of the password.
+- Removing someone from `team@appsdoc.com` stops new OIDC logins; existing
+  Postiz sessions last until they expire or you remove the user in Postiz.
+
+Registration for everyone else stays closed (`DISABLE_REGISTRATION=true`, one
+organisation exists): email/password signups are refused.
+
+OIDC settings live in `app.env` (`POSTIZ_GENERIC_OAUTH`, `POSTIZ_OAUTH_*`). To
+rotate/refresh them after a Terraform change:
+
+```bash
+terraform -chdir=infra/terraform output -json postiz_oidc_env |
+  ssh root@<host> 'bash /opt/appsdoc/postiz/current/scripts/set-env.sh /opt/appsdoc/postiz/shared/app.env'
+make deploy
+```
 
 ## Backups
 
@@ -94,13 +122,14 @@ configured from OpenPanel's settings). Invitations were not sent during deployme
 - `social.appsdoc.com`: proxied A record to the Frankfurt host, created manually,
   unchanged. Zone SSL mode Full (strict); origin certificate is Let's Encrypt via
   HTTP-01 through Cloudflare, issued by the shared Caddy.
-- No Access application, WAF rule or cache rule targets the hostname. Postiz
-  native authentication protects the app. Optional staff-only Access would need
-  route exceptions for `/uploads/*` (provider media pulls) and
-  `/integrations/social/*` callbacks; not implemented.
+- No WAF or cache rule targets the hostname, and no Access application gates
+  `social.appsdoc.com` itself: Postiz native auth protects private routes, while
+  `/uploads/*` (provider media pulls) and `/integrations/social/*` callbacks stay
+  reachable. Access is used only as the OIDC provider + hub tile (SaaS app).
 - Terraform (`infra/terraform`, state `postiz/terraform.tfstate` in the R2 state
-  bucket) currently manages **no resources**: the available API token cannot
-  read DNS. Pending action: with a token that has Zone DNS Read/Edit, look up the
+  bucket) manages the Access policy `AppsDoc Postiz team` and the SaaS app
+  `Social Media`. It does **not** manage the DNS record yet: the available API
+  token cannot read DNS. Pending action: with a token that has Zone DNS Read/Edit, look up the
   record ID, set `social_record_id` and `origin_ipv4` in `terraform.tfvars`,
   `make tf-plan` (expect 1 import, 0 changes) and apply.
 

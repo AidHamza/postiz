@@ -21,6 +21,12 @@ if [[ "$body" == *'"register":false'* ]]; then
     -d '{"email":"outsider-smoke@example.invalid","password":"not-a-real-pass-123","company":"Outsider","provider":"LOCAL"}' "$url/api/auth/register")"
   [[ "$r" == *"Registration is disabled"*" 400" ]] && ok "outsider registration refused" || no "outsider registration: $r"
 fi
+# Team login: Postiz generic OIDC -> Cloudflare Access (team@appsdoc.com only).
+oidc="$(curl -sS --max-time 30 "$url/api/auth/oauth/GENERIC")"
+if [[ "$oidc" == https://*.cloudflareaccess.com/cdn-cgi/access/sso/oidc/*redirect_uri=https%3A%2F%2F${url#https://}%2Fsettings* ]]; then
+  ok "OIDC login link points at Cloudflare Access with the /settings callback"
+  c="$(code "$oidc")"; [[ "$c" = 302 || "$c" = 200 ]] && ok "Access authorization endpoint responds ($c)" || no "Access authorization endpoint $c"
+else no "OIDC link: ${oidc:0:120}"; fi
 html="$(curl -sS --max-time 30 "$url/auth/login")"
 asset="$(grep -oE '/_next/static/[^"]+\.js' <<<"$html" | head -1)"
 [ -n "$asset" ] && c="$(code "$url$asset")" && [ "$c" = 200 ] && ok "static asset loads ($asset)" || no "static asset '$asset' ${c:-}"

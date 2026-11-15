@@ -10,7 +10,7 @@ for i in $(seq 1 60); do
 done
 log "backend API ready"
 for i in $(seq 1 60); do
-  if dc exec -T postiz node -e 'fetch("http://localhost:3002/health/status").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' 2>/dev/null; then break; fi
+  if dc exec -T postiz node -e 'fetch("http://localhost:3002/health/status").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' </dev/null 2>/dev/null; then break; fi
   [ "$i" = 60 ] && { log "orchestrator Temporal health failed"; exit 1; }
   sleep 5
 done

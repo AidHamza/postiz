@@ -32,4 +32,4 @@ ensure "$app" JWT_SECRET hex
 # 32 random bytes, base64. Generated once; must never change after first use.
 ensure "$app" ENCRYPTION_PROVIDER literal local
 ensure "$app" ENCRYPTION_KEY sh -c 'openssl rand -base64 32'
-ensure "$app" API_LIMIT literal 30
+ensure "$app" API_LIMIT literal 300
